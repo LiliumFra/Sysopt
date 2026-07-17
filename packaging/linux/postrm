@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+if [ "${1:-}" = purge ]; then
+  rm -f /var/lib/sysopt/install-user
+  rmdir /var/lib/sysopt 2>/dev/null || true
+fi
+exit 0

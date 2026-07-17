@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+set -u
+BIN="${SYSOPT_BIN:-/usr/bin/sysopt}"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/sysopt"
+CONFIG_FILE="$CONFIG_DIR/config.toml"
+UNIT="sysopt.service"
+
+ensure_setup() {
+  if [[ -L "$CONFIG_DIR" || -L "$CONFIG_FILE" ]]; then
+    echo "SysOpt rechazó una ruta de configuración enlazada por seguridad." >&2
+    exit 1
+  fi
+  mkdir -p "$CONFIG_DIR"
+  [[ -d "$CONFIG_DIR" && ! -L "$CONFIG_DIR" ]] || { echo "Ruta de configuración insegura." >&2; exit 1; }
+  chmod 0700 "$CONFIG_DIR"
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    cat > "$CONFIG_FILE" <<'CFG'
+apply = true
+
+[automation]
+enabled = true
+profile = "smart"
+
+[intelligence]
+enabled = true
+persist_state = true
+semantic_enabled = true
+semantic_auto_download = true
+semantic_retry_initial_secs = 30
+semantic_retry_max_secs = 3600
+semantic_download_timeout_secs = 300
+semantic_model_id = "auto"
+
+[cache]
+enabled = true
+adaptive_budget = true
+
+[resources]
+enabled = false
+
+[runtime]
+enabled = true
+CFG
+    chmod 0600 "$CONFIG_FILE"
+  fi
+  chmod 0600 "$CONFIG_FILE"
+  systemctl --user daemon-reload >/dev/null 2>&1 || true
+}
+
+start_service() {
+  ensure_setup
+  systemctl --user enable --now "$UNIT"
+}
+
+show_status() {
+  echo
+  "$BIN" --status 2>&1 || true
+  echo
+  systemctl --user --no-pager --full status "$UNIT" 2>/dev/null | sed -n '1,10p' || true
+}
+
+ensure_setup
+while true; do
+  clear
+  echo "========================================"
+  echo "          SysOpt Control Center"
+  echo "========================================"
+  "$BIN" --status 2>/dev/null || echo "SysOpt detenido"
+  echo
+  echo "1) Iniciar y activar al iniciar sesión"
+  echo "2) Pausar optimización"
+  echo "3) Reanudar optimización"
+  echo "4) Modo Inteligente (recomendado)"
+  echo "5) Ahorro de energía"
+  echo "6) Equilibrado"
+  echo "7) Máximo rendimiento"
+  echo "8) Juegos"
+  echo "9) Desarrollo"
+  echo "10) Creación multimedia"
+  echo "11) Streaming"
+  echo "12) Silencioso"
+  echo "13) Diagnóstico"
+  echo "14) Ver logs"
+  echo "15) Detener servicio"
+  echo "0) Salir"
+  echo
+  read -r -p "Opción: " choice
+  case "$choice" in
+    1) start_service ;;
+    2) "$BIN" --pause ;;
+    3) "$BIN" --resume ;;
+    4) "$BIN" --set-profile smart ;;
+    5) "$BIN" --set-profile eco ;;
+    6) "$BIN" --set-profile balanced ;;
+    7) "$BIN" --set-profile performance ;;
+    8) "$BIN" --set-profile gaming ;;
+    9) "$BIN" --set-profile development ;;
+    10) "$BIN" --set-profile creator ;;
+    11) "$BIN" --set-profile streaming ;;
+    12) "$BIN" --set-profile quiet ;;
+    13) "$BIN" --doctor; read -r -p "Enter para continuar..." _ ;;
+    14) journalctl --user -u "$UNIT" -n 100 --no-pager; read -r -p "Enter para continuar..." _ ;;
+    15) "$BIN" --shutdown 2>/dev/null || true; systemctl --user stop "$UNIT" 2>/dev/null || true ;;
+    0) exit 0 ;;
+    *) : ;;
+  esac
+  sleep 1
+  show_status >/dev/null
+ done

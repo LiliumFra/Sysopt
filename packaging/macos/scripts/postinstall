@@ -1,0 +1,47 @@
+#!/bin/bash
+set -eu
+CONSOLE_USER=$(/usr/bin/stat -f '%Su' /dev/console)
+if [[ -z "$CONSOLE_USER" || "$CONSOLE_USER" == "root" || "$CONSOLE_USER" == "loginwindow" ]]; then
+  echo "SysOpt: paquete instalado; el LaunchAgent se activará al abrir una sesión de usuario." >&2
+  exit 0
+fi
+
+USER_ID=$(/usr/bin/id -u "$CONSOLE_USER")
+USER_GROUP=$(/usr/bin/id -gn "$CONSOLE_USER")
+USER_HOME=$(/usr/bin/dscl . -read "/Users/$CONSOLE_USER" NFSHomeDirectory 2>/dev/null | /usr/bin/awk '{print $2}')
+if [[ -n "$USER_HOME" ]]; then
+  CONFIG_DIR="$USER_HOME/Library/Application Support/SysOpt"
+  CONFIG_FILE="$CONFIG_DIR/config.toml"
+  if [[ -L "$CONFIG_DIR" || -L "$CONFIG_FILE" ]]; then
+    echo "SysOpt: se omite la configuración automática porque la ruta contiene un enlace simbólico." >&2
+  else
+    /bin/mkdir -p "$CONFIG_DIR"
+    if [[ -d "$CONFIG_DIR" && ! -L "$CONFIG_DIR" ]]; then
+      /bin/chmod 0700 "$CONFIG_DIR"
+      /usr/sbin/chown "$CONSOLE_USER:$USER_GROUP" "$CONFIG_DIR"
+      if [[ ! -f "$CONFIG_FILE" && -f "/Library/Application Support/SysOpt/config.install.toml" ]]; then
+        /bin/cp "/Library/Application Support/SysOpt/config.install.toml" "$CONFIG_FILE"
+      fi
+      if [[ -f "$CONFIG_FILE" && ! -L "$CONFIG_FILE" ]]; then
+        /bin/chmod 0600 "$CONFIG_FILE"
+        /usr/sbin/chown "$CONSOLE_USER:$USER_GROUP" "$CONFIG_FILE"
+      fi
+    fi
+  fi
+fi
+
+SERVICE="gui/$USER_ID/io.sysopt.agent"
+/bin/launchctl bootout "$SERVICE" >/dev/null 2>&1 || true
+/bin/launchctl bootout "gui/$USER_ID/com.sysopt.agent" >/dev/null 2>&1 || true
+if ! /bin/launchctl bootstrap "gui/$USER_ID" /Library/LaunchAgents/io.sysopt.agent.plist; then
+  echo "SysOpt: no se pudo cargar el LaunchAgent en la sesión actual; se reintentará al próximo inicio de sesión." >&2
+  exit 0
+fi
+if ! /bin/launchctl enable "$SERVICE"; then
+  echo "SysOpt: LaunchAgent cargado, pero no pudo habilitarse automáticamente." >&2
+  exit 0
+fi
+if ! /bin/launchctl kickstart -k "$SERVICE"; then
+  echo "SysOpt: LaunchAgent habilitado; no pudo iniciarse inmediatamente." >&2
+fi
+exit 0

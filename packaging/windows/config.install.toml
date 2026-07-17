@@ -1,0 +1,50 @@
+apply = true
+
+[automation]
+enabled = true
+profile = "smart"
+
+[intelligence]
+enabled = true
+persist_state = true
+semantic_enabled = true
+semantic_auto_download = true
+semantic_retry_initial_secs = 30
+semantic_retry_max_secs = 3600
+semantic_download_timeout_secs = 300
+semantic_model_id = "auto"
+
+[cache]
+enabled = true
+adaptive_budget = true
+pressure_guard_enabled = true
+
+[safety]
+enabled = true
+max_consecutive_failure_cycles = 3
+max_failure_ratio = 0.50
+cooldown_secs = 120
+restore_on_trip = true
+pressure_guard_enabled = true
+battery_guard_enabled = true
+min_battery_percent = 20
+thermal_guard_enabled = true
+adaptive_psi_enabled = true
+adaptive_psi_factor = 3.0
+
+[overhead]
+enabled = true
+window_size = 60
+p95_budget_ms = 150
+recovery_cycles = 20
+max_level = 4
+
+[metrics]
+enabled = false
+bind = "127.0.0.1:9898"
+
+[resources]
+enabled = false
+
+[runtime]
+enabled = true

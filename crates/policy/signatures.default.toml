@@ -1,0 +1,111 @@
+# Base de firmas de sysopt.
+#
+# Cada sección es una categoría; "patterns" es una lista de substrings
+# (no distingue mayúsculas/minúsculas) que se buscan en el nombre del proceso.
+# Si tu editor, IDE o herramienta no aparece acá, agregala vos mismo:
+# no hace falta tocar el código ni recompilar. Podés pasar tu propio
+# archivo con --signatures ruta/a/tu/archivo.toml (se reemplaza entero
+# el set de categorías, así que si querés extender en vez de reemplazar,
+# copiá este archivo como base).
+
+[ide]
+patterns = [
+    "code.exe", "code - insiders", "code-insiders", "codium", "vscodium",
+    "code",                # VS Code / OSS builds en Linux suelen llamarse "code"
+    "cursor", "windsurf",
+    "studio64.exe", "studio64", "androidstudio",
+    "idea64.exe", "idea", "pycharm64.exe", "pycharm",
+    "webstorm64.exe", "webstorm", "clion64.exe", "rider64.exe", "goland64.exe",
+    "sublime_text", "atom", "notepad++.exe", "zed", "xcode",
+]
+
+[language_server]
+patterns = [
+    "tsserver", "typescript-language-server", "pyright", "pylance",
+    "rust-analyzer", "gopls", "clangd", "jdtls", "omnisharp",
+    "eslint_d", "vscode-json-language-server", "lua-language-server",
+    "sourcekit-lsp", "metals", "solargraph",
+]
+
+[build_tool]
+patterns = [
+    "rustc", "cargo", "cc1", "cc1plus", "clang", "clang++", "gcc", "g++",
+    "ld", "link.exe", "make", "ninja", "msbuild", "javac", "kotlinc",
+    "webpack", "vite", "esbuild", "tsc", "rollup", "swc", "cmake",
+]
+
+[mobile_tooling]
+patterns = [
+    "gradle", "gradled", "gradle-daemon", "gradledaemon",
+    "emulator", "emulator64-x86", "emulator64-arm", "qemu-system",
+    "adb", "adb.exe", "dexbuilder", "d8", "aapt2", "xcodebuild", "simctl",
+]
+
+[container_vm]
+patterns = [
+    "dockerd", "docker", "containerd", "com.docker.backend",
+    "wsl", "wslhost.exe", "vmmem", "vmmemwsl", "vmware-vmx",
+    "virtualbox", "vboxheadless",
+]
+
+[browser]
+patterns = [
+    "chrome", "chrome.exe", "msedge", "msedge.exe",
+    "firefox", "firefox.exe", "brave", "safari",
+]
+
+[game]
+patterns = [
+    "eldenring", "cyberpunk2077", "gta5", "rdr2", "valorant", "fortnite",
+    "cs2", "dota2", "league of legends", "minecraft", "unrealgame",
+    "unityplayer", "godot", "game-win64-shipping",
+]
+
+[game_launcher]
+patterns = [
+    "steam", "epicgameslauncher", "battle.net", "riotclientservices",
+    "eadesktop", "origin", "ubisoftconnect", "gog galaxy", "galaxyclient",
+]
+
+[creative]
+patterns = [
+    "blender", "photoshop", "illustrator", "lightroom", "premiere pro",
+    "afterfx", "davinci resolve", "resolve", "fusion", "affinity photo",
+    "affinity designer", "krita", "gimp", "audition", "reaper", "ableton",
+]
+
+[media_encoder]
+patterns = [
+    "ffmpeg", "handbrake", "mediaencoder", "x264", "x265", "makemkv",
+]
+
+[streaming]
+patterns = [
+    "obs64", "obs32", "obs studio", "streamlabs", "xsplit", "twitch studio",
+]
+
+[communication]
+patterns = [
+    "discord", "slack", "teams", "zoom", "telegram", "whatsapp", "signal",
+]
+
+[background]
+patterns = [
+    "onedrive", "dropbox", "googledrivefs", "icloud", "backup", "sync",
+]
+
+[updater]
+patterns = [
+    "update", "updater", "installer", "maintenance", "crashpad_handler",
+]
+
+[indexer]
+patterns = [
+    "searchindexer", "tracker-miner", "mds", "mdworker", "baloo_file",
+]
+
+[protected]
+patterns = [
+    "system", "registry", "kernel_task", "launchd", "wininit", "winlogon",
+    "csrss", "services", "lsass", "smss", "systemd", "windowserver",
+]

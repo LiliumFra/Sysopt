@@ -1,0 +1,71 @@
+#!/bin/bash
+set -u
+BIN="/usr/local/bin/sysopt"
+LABEL="io.sysopt.agent"
+PLIST="/Library/LaunchAgents/io.sysopt.agent.plist"
+UID_VALUE="$(id -u)"
+
+show_message() {
+  /usr/bin/osascript - "$1" <<'OSA' >/dev/null 2>&1 || true
+on run argv
+  display dialog (item 1 of argv) buttons {"Aceptar"} default button "Aceptar" with title "SysOpt"
+end run
+OSA
+}
+
+status_text() {
+  "$BIN" --status 2>&1 || echo "SysOpt está detenido"
+}
+
+ensure_config_dir() {
+  local config_dir="$HOME/Library/Application Support/SysOpt"
+  local config_file="$config_dir/config.toml"
+  if [[ -L "$config_dir" || -L "$config_file" ]]; then
+    show_message "SysOpt rechazó una ruta de configuración enlazada por seguridad."
+    return 1
+  fi
+  /bin/mkdir -p "$config_dir" || return 1
+  [[ -d "$config_dir" && ! -L "$config_dir" ]] || return 1
+  /bin/chmod 0700 "$config_dir"
+  [[ ! -f "$config_file" ]] || /bin/chmod 0600 "$config_file"
+}
+
+start_agent() {
+  local service="gui/$UID_VALUE/$LABEL"
+  /bin/launchctl bootstrap "gui/$UID_VALUE" "$PLIST" >/dev/null 2>&1     || /bin/launchctl print "$service" >/dev/null 2>&1     || { show_message "No se pudo cargar el LaunchAgent de SysOpt."; return 1; }
+  /bin/launchctl enable "$service" >/dev/null 2>&1     || { show_message "El LaunchAgent existe, pero no pudo habilitarse."; return 1; }
+  /bin/launchctl kickstart -k "$service" >/dev/null 2>&1     || { show_message "El LaunchAgent quedó habilitado, pero no pudo iniciarse ahora."; return 1; }
+}
+
+while true; do
+  STATUS="$(status_text)"
+  CHOICE=$(/usr/bin/osascript - "$STATUS" <<'OSA'
+on run argv
+  set currentStatus to item 1 of argv
+  set options to {"Iniciar", "Pausar", "Reanudar", "Modo Inteligente", "Ahorro de energía", "Equilibrado", "Máximo rendimiento", "Juegos", "Desarrollo", "Creación multimedia", "Streaming", "Silencioso", "Diagnóstico", "Abrir configuración", "Detener", "Salir"}
+  set selectedItem to choose from list options with title "SysOpt Control Center" with prompt currentStatus default items {"Modo Inteligente"}
+  if selectedItem is false then return "Salir"
+  return item 1 of selectedItem
+end run
+OSA
+)
+  case "$CHOICE" in
+    "Iniciar") start_agent ;;
+    "Pausar") "$BIN" --pause >/dev/null 2>&1 || true ;;
+    "Reanudar") "$BIN" --resume >/dev/null 2>&1 || true ;;
+    "Modo Inteligente") "$BIN" --set-profile smart >/dev/null 2>&1 || true ;;
+    "Ahorro de energía") "$BIN" --set-profile eco >/dev/null 2>&1 || true ;;
+    "Equilibrado") "$BIN" --set-profile balanced >/dev/null 2>&1 || true ;;
+    "Máximo rendimiento") "$BIN" --set-profile performance >/dev/null 2>&1 || true ;;
+    "Juegos") "$BIN" --set-profile gaming >/dev/null 2>&1 || true ;;
+    "Desarrollo") "$BIN" --set-profile development >/dev/null 2>&1 || true ;;
+    "Creación multimedia") "$BIN" --set-profile creator >/dev/null 2>&1 || true ;;
+    "Streaming") "$BIN" --set-profile streaming >/dev/null 2>&1 || true ;;
+    "Silencioso") "$BIN" --set-profile quiet >/dev/null 2>&1 || true ;;
+    "Diagnóstico") show_message "$($BIN --doctor 2>&1)" ;;
+    "Abrir configuración") ensure_config_dir && /usr/bin/open "$HOME/Library/Application Support/SysOpt" ;;
+    "Detener") "$BIN" --shutdown >/dev/null 2>&1 || true; /bin/launchctl bootout "gui/$UID_VALUE/$LABEL" >/dev/null 2>&1 || true ;;
+    *) exit 0 ;;
+  esac
+  sleep 0.4
+done

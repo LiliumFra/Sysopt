@@ -1,0 +1,292 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "build-linux-x86_64",
+      "category": "build",
+      "platform": "linux-x86_64",
+      "automated_by": "release-gate",
+      "required_for_stable": true
+    },
+    {
+      "id": "build-linux-arm64",
+      "category": "build",
+      "platform": "linux-arm64",
+      "automated_by": "release-gate",
+      "required_for_stable": true
+    },
+    {
+      "id": "build-windows-x86_64",
+      "category": "build",
+      "platform": "windows-x86_64",
+      "automated_by": "release-gate",
+      "required_for_stable": true
+    },
+    {
+      "id": "build-windows-arm64",
+      "category": "build",
+      "platform": "windows-arm64",
+      "automated_by": "release-gate",
+      "required_for_stable": true
+    },
+    {
+      "id": "build-macos-arm64",
+      "category": "build",
+      "platform": "macos-arm64",
+      "automated_by": "release-gate",
+      "required_for_stable": true
+    },
+    {
+      "id": "build-macos-x86_64",
+      "category": "build",
+      "platform": "macos-x86_64",
+      "automated_by": "release-gate",
+      "required_for_stable": true
+    },
+    {
+      "id": "tests-workspace",
+      "category": "test",
+      "platform": "all",
+      "automated_by": "release-gate",
+      "required_for_stable": true
+    },
+    {
+      "id": "doctests-workspace",
+      "category": "test",
+      "platform": "all",
+      "automated_by": "release-gate",
+      "required_for_stable": true
+    },
+    {
+      "id": "clippy-deny-warnings",
+      "category": "test",
+      "platform": "all",
+      "automated_by": "release-gate",
+      "required_for_stable": true
+    },
+    {
+      "id": "deep-static-validation",
+      "category": "test",
+      "platform": "all",
+      "automated_by": "release-gate",
+      "required_for_stable": true
+    },
+    {
+      "id": "rustsec-audit",
+      "category": "security",
+      "platform": "all",
+      "automated_by": "security-audit",
+      "required_for_stable": true
+    },
+    {
+      "id": "ecoqos-roundtrip-x86_64",
+      "category": "integration",
+      "platform": "windows-x86_64",
+      "automated_by": "windows-native-tests",
+      "required_for_stable": true
+    },
+    {
+      "id": "ecoqos-roundtrip-arm64",
+      "category": "integration",
+      "platform": "windows-arm64",
+      "automated_by": "windows-native-tests",
+      "required_for_stable": true
+    },
+    {
+      "id": "pid-reuse-protection",
+      "category": "integration",
+      "platform": "all",
+      "automated_by": "exact-policy-tests",
+      "required_for_stable": true
+    },
+    {
+      "id": "cgroup-membership-recovery",
+      "category": "integration",
+      "platform": "linux",
+      "automated_by": "rust-transaction-tests",
+      "required_for_stable": true
+    },
+    {
+      "id": "cgroup-controls-recovery",
+      "category": "integration",
+      "platform": "linux",
+      "automated_by": "rust-transaction-tests",
+      "required_for_stable": true
+    },
+    {
+      "id": "macos-worker-qos-roundtrip",
+      "category": "integration",
+      "platform": "macos",
+      "automated_by": "macos-native-tests",
+      "required_for_stable": true
+    },
+    {
+      "id": "package-windows-x86_64",
+      "category": "package",
+      "platform": "windows-x86_64",
+      "automated_by": "windows-packages",
+      "required_for_stable": true
+    },
+    {
+      "id": "package-windows-arm64",
+      "category": "package",
+      "platform": "windows-arm64",
+      "automated_by": "windows-packages",
+      "required_for_stable": true
+    },
+    {
+      "id": "package-linux-x86_64",
+      "category": "package",
+      "platform": "linux-x86_64",
+      "automated_by": "linux-packages",
+      "required_for_stable": true
+    },
+    {
+      "id": "package-linux-arm64",
+      "category": "package",
+      "platform": "linux-arm64",
+      "automated_by": "linux-packages",
+      "required_for_stable": true
+    },
+    {
+      "id": "package-macos-arm64",
+      "category": "package",
+      "platform": "macos-arm64",
+      "automated_by": "macos-packages",
+      "required_for_stable": true
+    },
+    {
+      "id": "package-macos-x86_64",
+      "category": "package",
+      "platform": "macos-x86_64",
+      "automated_by": "macos-packages",
+      "required_for_stable": true
+    },
+    {
+      "id": "installer-windows-install-update-uninstall",
+      "category": "installer",
+      "platform": "windows-x86_64",
+      "automated_by": "windows-installer-smoke",
+      "required_for_stable": true
+    },
+    {
+      "id": "installer-linux-install-update-uninstall",
+      "category": "installer",
+      "platform": "linux-x86_64",
+      "automated_by": "linux-installer-smoke",
+      "required_for_stable": true
+    },
+    {
+      "id": "installer-macos-install-update-uninstall",
+      "category": "installer",
+      "platform": "macos-arm64",
+      "automated_by": "macos-installer-smoke",
+      "required_for_stable": true
+    },
+    {
+      "id": "installer-offline-timeout-fallback",
+      "category": "installer",
+      "platform": "all",
+      "automated_by": "installer-contract-tests",
+      "required_for_stable": true
+    },
+    {
+      "id": "benchmark-processes-100",
+      "category": "benchmark",
+      "platform": "linux-x86_64",
+      "automated_by": "benchmark-smoke",
+      "required_for_stable": true
+    },
+    {
+      "id": "benchmark-processes-500",
+      "category": "benchmark",
+      "platform": "linux-x86_64",
+      "automated_by": "benchmark-smoke",
+      "required_for_stable": true
+    },
+    {
+      "id": "benchmark-processes-2000",
+      "category": "benchmark",
+      "platform": "linux-x86_64",
+      "automated_by": "benchmark-smoke",
+      "required_for_stable": true
+    },
+    {
+      "id": "cgroup-v2-native-controls",
+      "category": "hardware",
+      "platform": "linux-cgroup-v2-delegated",
+      "automated_by": "hardware-qualification",
+      "required_for_stable": true
+    },
+    {
+      "id": "benchmark-sata-4gib",
+      "category": "hardware",
+      "platform": "lab-sata-4gib",
+      "automated_by": "hardware-qualification",
+      "required_for_stable": true
+    },
+    {
+      "id": "benchmark-sata-8gib",
+      "category": "hardware",
+      "platform": "lab-sata-8gib",
+      "automated_by": "hardware-qualification",
+      "required_for_stable": true
+    },
+    {
+      "id": "benchmark-nvme-16gib",
+      "category": "hardware",
+      "platform": "lab-nvme-16gib",
+      "automated_by": "hardware-qualification",
+      "required_for_stable": true
+    },
+    {
+      "id": "authenticode-x86_64",
+      "category": "signature",
+      "platform": "windows-x86_64",
+      "automated_by": "windows-installer",
+      "required_for_stable": true
+    },
+    {
+      "id": "authenticode-arm64",
+      "category": "signature",
+      "platform": "windows-arm64",
+      "automated_by": "windows-arm64-portable",
+      "required_for_stable": true
+    },
+    {
+      "id": "developer-id-notarization-arm64",
+      "category": "signature",
+      "platform": "macos-arm64",
+      "automated_by": "macos-packages",
+      "required_for_stable": true
+    },
+    {
+      "id": "developer-id-notarization-x86_64",
+      "category": "signature",
+      "platform": "macos-x86_64",
+      "automated_by": "macos-packages",
+      "required_for_stable": true
+    },
+    {
+      "id": "package-manifest-integrity",
+      "category": "supply-chain",
+      "required_for_stable": true,
+      "automated_by": "publish-package-manifest-verification",
+      "description": "All downloaded native release assets exactly match their per-runner package manifests."
+    },
+    {
+      "id": "cyclonedx-sbom",
+      "category": "supply-chain",
+      "platform": "all",
+      "automated_by": "publish",
+      "required_for_stable": true
+    },
+    {
+      "id": "github-build-provenance",
+      "category": "supply-chain",
+      "platform": "all",
+      "automated_by": "publish",
+      "required_for_stable": true
+    }
+  ]
+}

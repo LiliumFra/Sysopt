@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SysOpt Control Center
+Comment=Controlar perfiles, SmartCache y el servicio SysOpt
+Exec=/usr/bin/sysopt-control
+Icon=utilities-system-monitor
+Terminal=true
+Categories=System;Utility;
+StartupNotify=true

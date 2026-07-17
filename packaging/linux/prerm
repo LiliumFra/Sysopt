@@ -1,0 +1,42 @@
+#!/bin/sh
+set -eu
+
+STATE_FILE=/var/lib/sysopt/install-user
+ACTION=${1:-remove}
+USER_NAME=""
+if [ -f "$STATE_FILE" ] && [ ! -L "$STATE_FILE" ]; then
+  USER_NAME=$(sed -n '1p' "$STATE_FILE" 2>/dev/null || true)
+fi
+case "$USER_NAME" in
+  ''|root|*[!A-Za-z0-9._-]*) USER_NAME="" ;;
+esac
+
+run_for_user() {
+  [ -n "$USER_NAME" ] || return 0
+  USER_HOME=$(getent passwd "$USER_NAME" | cut -d: -f6)
+  USER_ID=$(id -u "$USER_NAME")
+  [ -n "$USER_HOME" ] || return 0
+  if [ -S "/run/user/$USER_ID/bus" ]; then
+    runuser -u "$USER_NAME" -- env HOME="$USER_HOME" XDG_RUNTIME_DIR="/run/user/$USER_ID" "$@"
+  else
+    return 1
+  fi
+}
+
+if [ -n "$USER_NAME" ]; then
+  run_for_user /usr/bin/sysopt --shutdown >/dev/null 2>&1 || true
+  case "$ACTION" in
+    upgrade|deconfigure|failed-upgrade)
+      run_for_user systemctl --user stop sysopt.service >/dev/null 2>&1 || true
+      ;;
+    remove)
+      run_for_user systemctl --user disable --now sysopt.service >/dev/null 2>&1 || true
+      USER_HOME=$(getent passwd "$USER_NAME" | cut -d: -f6)
+      rm -f "$USER_HOME/.config/systemd/user/default.target.wants/sysopt.service"
+      run_for_user systemctl --user daemon-reload >/dev/null 2>&1 || true
+      rm -f "$STATE_FILE"
+      rmdir /var/lib/sysopt 2>/dev/null || true
+      ;;
+  esac
+fi
+exit 0

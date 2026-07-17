@@ -1,0 +1,77 @@
+#!/bin/sh
+set -eu
+
+STATE_DIR=/var/lib/sysopt
+STATE_FILE=$STATE_DIR/install-user
+# Ruta persistente equivalente: /var/lib/sysopt/install-user
+HELPER=/usr/lib/sysopt/sysopt-priority-helper
+
+valid_user() {
+  case "$1" in
+    ''|root|*[!A-Za-z0-9._-]*) return 1 ;;
+    *) id "$1" >/dev/null 2>&1 ;;
+  esac
+}
+
+stored_user=""
+if [ -f "$STATE_FILE" ] && [ ! -L "$STATE_FILE" ]; then
+  stored_user=$(sed -n '1p' "$STATE_FILE" 2>/dev/null || true)
+fi
+USER_NAME="$stored_user"
+if ! valid_user "$USER_NAME" && valid_user "${SUDO_USER:-}"; then
+  USER_NAME=$SUDO_USER
+fi
+
+if [ -x "$HELPER" ]; then
+  chown root:root "$HELPER"
+  chmod 0755 "$HELPER"
+  if command -v setcap >/dev/null 2>&1; then
+    if ! setcap 'cap_sys_nice=ep' "$HELPER"; then
+      echo "SysOpt: no se pudo activar CAP_SYS_NICE en el helper; la aplicación seguirá funcionando sin elevar prioridades." >&2
+    elif command -v getcap >/dev/null 2>&1 && ! getcap "$HELPER" | grep -q 'cap_sys_nice'; then
+      echo "SysOpt: el sistema de archivos no conservó CAP_SYS_NICE; las prioridades elevadas quedarán desactivadas." >&2
+    fi
+  else
+    echo "SysOpt: setcap no está disponible; las prioridades elevadas quedarán desactivadas." >&2
+  fi
+fi
+
+if valid_user "$USER_NAME"; then
+  USER_HOME=$(getent passwd "$USER_NAME" | cut -d: -f6)
+  USER_ID=$(id -u "$USER_NAME")
+  USER_GROUP=$(id -gn "$USER_NAME")
+  if [ -n "$USER_HOME" ] && [ -d "$USER_HOME" ]; then
+    CONFIG_DIR="$USER_HOME/.config/sysopt"
+    CONFIG_FILE="$CONFIG_DIR/config.toml"
+    if [ -L "$CONFIG_DIR" ] || [ -L "$CONFIG_FILE" ]; then
+      echo "SysOpt: se omite la configuración automática porque la ruta contiene un enlace simbólico." >&2
+    else
+      install -d -m 0700 -o "$USER_NAME" -g "$USER_GROUP" "$CONFIG_DIR"
+      if [ ! -f "$CONFIG_FILE" ]; then
+        install -m 0600 -o "$USER_NAME" -g "$USER_GROUP" /usr/share/sysopt/config.install.toml "$CONFIG_FILE"
+      fi
+    fi
+
+    install -d -m 0755 "$STATE_DIR"
+    printf '%s\n' "$USER_NAME" > "$STATE_FILE"
+    chmod 0600 "$STATE_FILE"
+
+    UNIT_LINK="$USER_HOME/.config/systemd/user/default.target.wants/sysopt.service"
+    runuser -u "$USER_NAME" -- env HOME="$USER_HOME" mkdir -p "$(dirname "$UNIT_LINK")"
+    runuser -u "$USER_NAME" -- env HOME="$USER_HOME" ln -sfn /usr/lib/systemd/user/sysopt.service "$UNIT_LINK"
+
+    if [ -S "/run/user/$USER_ID/bus" ]; then
+      if runuser -u "$USER_NAME" -- env HOME="$USER_HOME" XDG_RUNTIME_DIR="/run/user/$USER_ID" systemctl --user daemon-reload \
+        && runuser -u "$USER_NAME" -- env HOME="$USER_HOME" XDG_RUNTIME_DIR="/run/user/$USER_ID" systemctl --user enable sysopt.service \
+        && runuser -u "$USER_NAME" -- env HOME="$USER_HOME" XDG_RUNTIME_DIR="/run/user/$USER_ID" systemctl --user restart sysopt.service; then
+        :
+      else
+        echo "SysOpt: el servicio quedó habilitado, pero no pudo iniciarse en la sesión actual." >&2
+      fi
+    else
+      echo "SysOpt: servicio habilitado para el próximo inicio de sesión de $USER_NAME." >&2
+    fi
+  fi
+fi
+
+exit 0

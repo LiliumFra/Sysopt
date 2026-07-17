@@ -1,0 +1,23 @@
+[Unit]
+Description=SysOpt automatic process and cache optimizer
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/sysopt --apply --auto --profile smart
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+KillSignal=SIGTERM
+UMask=0077
+Nice=5
+IOSchedulingClass=idle
+PrivateTmp=true
+ProtectClock=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=default.target

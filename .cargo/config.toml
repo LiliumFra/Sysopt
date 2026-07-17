@@ -1,0 +1,3 @@
+[build]
+# Cargo 1.97: cualquier warning de crates locales falla también fuera de Clippy.
+warnings = "deny"

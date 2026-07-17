@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: 1.97.1
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
+      - name: Require reproducible dependency lock
+        run: cargo metadata --locked --no-deps --format-version 1
+      - name: Build workspace
+        run: cargo build --locked --workspace --all-targets --verbose
+      - name: Tests
+        run: cargo test --locked --workspace --all-targets --verbose
+      - name: Documentation tests
+        run: cargo test --locked --workspace --doc --verbose
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Format
+        run: cargo fmt --all -- --check
+
+  security-audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: 1.97.1
+      - name: Install pinned cargo-audit
+        run: cargo install cargo-audit --locked --version 0.22.2
+      - name: Audit locked dependency graph
+        run: cargo audit -D warnings
+
+  validate-installers-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: 1.97.1
+          components: rustfmt
+      - name: Deep static release validation
+        run: |
+          python tools/test_installers.py
+          python tools/test_workflow_contracts.py
+          python tools/test_release_evidence.py
+          python tools/test_source_artifacts.py
+          python tools/generate_source_manifest.py --root . --check
+          python tools/deep_validate.py --root .
+      - name: Validate shell scripts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          bash -n INSTALAR-LINUX.sh
+          bash -n INSTALAR-MACOS.command
+          bash -n scripts/install.sh
+          bash -n scripts/uninstall.sh
+          bash -n packaging/linux/sysopt-control
+          sh -n packaging/linux/postinst
+          sh -n packaging/linux/prerm
+          bash -n packaging/macos/control-app/Contents/MacOS/sysopt-control
+          bash -n packaging/macos/scripts/preinstall
+          bash -n packaging/macos/scripts/postinstall
+          shellcheck -S warning INSTALAR-LINUX.sh INSTALAR-MACOS.command scripts/install.sh scripts/uninstall.sh packaging/linux/sysopt-control packaging/linux/postinst packaging/linux/prerm packaging/macos/control-app/Contents/MacOS/sysopt-control packaging/macos/scripts/preinstall packaging/macos/scripts/postinstall
+
+  validate-installers-windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Validate PowerShell
+        shell: pwsh
+        run: |
+          $files = @('scripts/install.ps1','scripts/uninstall.ps1','packaging/windows/control-center.ps1','packaging/windows/task-helper.ps1')
+          foreach ($file in $files) {
+            $errors = $null
+            [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw $file), [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$file`: $_" }
+              exit 1
+            }
+          }
+
+  validate-installers-macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Validate property lists
+        run: |
+          plutil -lint packaging/macos/io.sysopt.agent.plist
+          plutil -lint packaging/macos/control-app/Contents/Info.plist

@@ -1,0 +1,165 @@
+# Las opciones CLI prevalecen sobre este archivo.
+apply = false
+interval_secs = 3
+top_n = 10
+once = false
+# signatures_path = "/ruta/a/signatures.toml"
+
+[classifier]
+# rules | model | hybrid
+strategy = "hybrid"
+# model_path = "/ruta/a/sysopt-model.toml"
+min_confidence = 0.72
+
+[learning]
+enabled = false
+dataset_path = "./learning.jsonl"
+
+[automation]
+# Evita cambios de modo por picos aislados y ajusta la frecuencia de muestreo.
+enabled = true
+# smart | eco | balanced | performance | gaming | development | creator | streaming | quiet
+profile = "smart"
+mode_stability_cycles = 2
+idle_interval_secs = 8
+active_interval_secs = 3
+busy_interval_secs = 1
+heavy_foreground_immediate = true
+
+[intelligence]
+# IA híbrida local: reglas auditables, aprendizaje online y clasificación semántica.
+enabled = true
+persist_state = true
+learning_rate = 0.18
+history_decay = 0.985
+min_confidence = 0.52
+max_boosted_processes = 4
+max_demoted_processes = 6
+# High permanece desactivado por seguridad; AboveNormal suele ser suficiente.
+allow_high_priority = false
+high_priority_min_score = 0.94
+background_demotion_cpu_threshold = 82.0
+background_demotion_ram_percent = 12
+max_process_profiles = 1024
+max_root_profiles = 128
+persist_interval_secs = 60
+
+# Modelo estático Model2Vec/POTION descargado desde Hugging Face.
+# auto: 2M (<6 GiB RAM), 4M (6-12 GiB) u 8M (>=12 GiB).
+semantic_enabled = true
+semantic_auto_download = true
+semantic_retry_initial_secs = 30
+semantic_retry_max_secs = 3600
+semantic_download_timeout_secs = 300
+semantic_model_id = "auto"
+# Por seguridad, la semántica solo complementa procesos no reconocidos por firmas.
+semantic_only_unknown = true
+semantic_min_similarity = 0.36
+semantic_weight = 0.18
+semantic_max_cache_entries = 2048
+semantic_max_processes_per_cycle = 4
+
+[cache]
+# SmartCache precarga archivos en la caché de páginas del SO. No instala drivers
+# ni reemplaza al sistema de archivos. Solo realiza lecturas cuando apply=true.
+enabled = true
+# Raíces explícitas opcionales. Si queda vacío, aprende carpetas de trabajo desde
+# procesos activos, limitadas al HOME/USERPROFILE por seguridad.
+roots = []
+auto_process_roots = true
+restrict_auto_roots_to_home = true
+persist_state = true
+max_hot_roots = 32
+scan_interval_secs = 60
+cooldown_secs = 900
+max_depth = 6
+max_scan_entries = 20000
+max_file_size_bytes = 134217728
+bytes_per_cycle = 268435456
+# Ajusta el presupuesto real entre min_bytes_per_cycle y bytes_per_cycle
+# según la memoria disponible en cada ciclo.
+adaptive_budget = true
+min_bytes_per_cycle = 33554432
+min_available_memory_percent = 25
+max_cpu_percent = 55.0
+# Linux PSI evita que una precarga empeore contención real de memoria o E/S.
+# En Windows y macOS estas señales quedan desactivadas automáticamente.
+pressure_guard_enabled = true
+max_memory_some_pressure_avg10 = 6.0
+max_io_some_pressure_avg10 = 15.0
+include_extensions = [
+  "rs", "toml", "lock", "json", "yaml", "yml", "xml", "md", "txt",
+  "js", "mjs", "cjs", "ts", "tsx", "jsx", "css", "scss", "html",
+  "py", "pyc", "java", "class", "jar", "kt", "kts", "gradle",
+  "c", "cc", "cpp", "h", "hpp", "go", "cs", "dll", "so", "dylib",
+  "exe", "bin", "wasm", "pak", "db", "sqlite", "sqlite3", "index",
+  "dat", "model", "onnx", "blend", "psd", "aep", "prproj",
+  "drp", "wav", "ini", "shader", "cache"
+]
+exclude_directories = [
+  ".git", ".svn", ".hg", ".cache", ".gradle", ".idea", ".next",
+  ".nuxt", ".pytest_cache", ".tox", ".venv", "__pycache__",
+  "$recycle.bin", "build", "coverage", "dist", "node_modules", "out",
+  "system volume information", "target", "tmp", "temp", "venv"
+]
+
+[safety]
+# Disyuntor automático: detiene cambios nuevos si el backend falla repetidamente
+# o si Linux PSI detecta contención severa. Puede restaurar cambios administrados.
+enabled = true
+max_consecutive_failure_cycles = 3
+max_failure_ratio = 0.50
+cooldown_secs = 120
+restore_on_trip = true
+pressure_guard_enabled = true
+max_cpu_some_pressure_avg10 = 35.0
+max_memory_full_pressure_avg10 = 2.0
+max_io_full_pressure_avg10 = 12.0
+# Reduce trabajo secundario automáticamente en batería baja o estrés térmico.
+battery_guard_enabled = true
+min_battery_percent = 20
+thermal_guard_enabled = true
+# Aprende una línea base PSI local para evitar umbrales rígidos en cada equipo.
+adaptive_psi_enabled = true
+adaptive_psi_factor = 3.0
+
+[overhead]
+# Mantiene el coste de SysOpt dentro de presupuesto y degrada funciones en etapas.
+enabled = true
+window_size = 60
+p95_budget_ms = 150
+recovery_cycles = 20
+max_level = 4
+
+[metrics]
+# OpenMetrics local, desactivado por defecto. Solo se permite loopback.
+enabled = false
+bind = "127.0.0.1:9898"
+
+[resources]
+# Función avanzada: se mantiene desactivada hasta que se configure y pruebe.
+enabled = false
+linux_cgroup_root = "/sys/fs/cgroup/sysopt"
+
+# Controles cgroup v2 compartidos con journal durable, verificación y rollback.
+# Se aplican únicamente dentro de una raíz delegada explícita.
+foreground_cpu_weight = 500
+development_cpu_weight = 300
+containers_cpu_weight = 200
+background_cpu_weight = 50
+
+foreground_io_weight = 500
+development_io_weight = 300
+containers_io_weight = 200
+background_io_weight = 50
+
+containers_memory_high_percent = 75
+background_memory_high_percent = 35
+
+[runtime]
+# Las rutas se omiten para usar ubicaciones privadas nativas de cada plataforma.
+# Estado, control en caliente, instancia única y recuperación ante fallos.
+enabled = true
+status_interval_secs = 3
+safe_mode_crash_threshold = 3
+crash_window_secs = 600

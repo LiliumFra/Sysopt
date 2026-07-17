@@ -1,0 +1,14 @@
+#!/bin/bash
+set -e
+CONSOLE_USER=$(/usr/bin/stat -f '%Su' /dev/console)
+if [[ -n "$CONSOLE_USER" && "$CONSOLE_USER" != "root" && "$CONSOLE_USER" != "loginwindow" ]]; then
+  USER_ID=$(/usr/bin/id -u "$CONSOLE_USER")
+  if [[ -x /usr/local/bin/sysopt ]]; then
+    /bin/launchctl asuser "$USER_ID" /usr/bin/sudo -u "$CONSOLE_USER" \
+      /usr/local/bin/sysopt --shutdown >/dev/null 2>&1 || true
+    /bin/sleep 1
+  fi
+  /bin/launchctl bootout "gui/$USER_ID/io.sysopt.agent" >/dev/null 2>&1 || true
+  /bin/launchctl bootout "gui/$USER_ID/com.sysopt.agent" >/dev/null 2>&1 || true
+fi
+exit 0

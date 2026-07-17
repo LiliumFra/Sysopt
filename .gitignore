@@ -1,0 +1,30 @@
+/target
+**/target
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# Windows
+*.pdb
+Thumbs.db
+
+# macOS
+.DS_Store
+
+# Packaging outputs
+/dist
+/packaging/windows/build
+/packaging/windows/output
+*.deb
+*.pkg
+
+# Local runtime state
+/runtime
+status.json
+control.json
+health.json
+sysopt.lock
+enforcement-journal.json
+enforcement-journal.json.lock

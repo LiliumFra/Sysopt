@@ -1,0 +1,683 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  RUST_VERSION: "1.97.1"
+  PYTHON_VERSION: "3.13"
+  QUALIFICATION_MATRIX: qualification/release-matrix.json
+
+jobs:
+  release-gate:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            case_id: build-linux-x86_64
+            arch: linux-x86_64
+          - os: ubuntu-24.04-arm
+            case_id: build-linux-arm64
+            arch: linux-arm64
+          - os: windows-2025
+            case_id: build-windows-x86_64
+            arch: windows-x86_64
+          - os: windows-11-arm
+            case_id: build-windows-arm64
+            arch: windows-arm64
+          - os: macos-15
+            case_id: build-macos-arm64
+            arch: macos-arm64
+          - os: macos-15-intel
+            case_id: build-macos-x86_64
+            arch: macos-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
+      - name: Metadata and tag gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --locked --no-deps --format-version 1 > cargo-metadata.json
+          expected="${GITHUB_REF_NAME#v}"
+          actual="$(python -c 'import json; m=json.load(open("cargo-metadata.json")); print(next(p["version"] for p in m["packages"] if p["name"]=="sysopt"))')"
+          test "$actual" = "$expected" || { echo "tag $expected != Cargo $actual" >&2; exit 1; }
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Tests
+        run: cargo test --locked --workspace --all-targets --verbose
+      - name: Documentation tests
+        run: cargo test --locked --workspace --doc --verbose
+      - name: Deep release validation
+        if: matrix.case_id == 'build-linux-x86_64'
+        run: |
+          python tools/test_installers.py
+          python tools/test_workflow_contracts.py
+          python tools/test_release_evidence.py
+          python tools/test_source_artifacts.py
+          python tools/generate_source_manifest.py --root . --check
+          python tools/deep_validate.py --root .
+      - name: PID reuse protection tests
+        if: matrix.case_id == 'build-linux-x86_64'
+        run: |
+          cargo test --locked --package policy tracker::tests::pid_reciclado_no_se_toca -- --exact
+          cargo test --locked --package policy tracker::tests::reset_final_ignora_pid_reciclado -- --exact
+          cargo test --locked --package policy tracker::tests::descarta_accion_nueva_para_pid_reciclado -- --exact
+      - name: cgroup membership journal recovery test
+        if: matrix.case_id == 'build-linux-x86_64'
+        run: cargo test --locked --package enforcement cgroup_v2::tests::cgroup_membership_journal_reconciles_prepared_entry -- --exact
+      - name: cgroup controls journal recovery tests
+        if: matrix.case_id == 'build-linux-x86_64'
+        run: |
+          cargo test --locked --package enforcement cgroup_journal::tests::recupera_transaccion_preparada_y_confirma_aplicacion -- --exact
+          cargo test --locked --package enforcement cgroup_journal::tests::conserva_original_y_registra_valor_aplicado_anterior -- --exact
+      - name: Windows EcoQoS native roundtrip
+        if: startsWith(matrix.case_id, 'build-windows-')
+        run: cargo test --locked --package enforcement ecoqos_roundtrip_current_process -- --ignored --exact
+      - name: macOS worker QoS native roundtrip
+        if: startsWith(matrix.case_id, 'build-macos-')
+        run: cargo test --locked --package sysopt macos_worker_qos_roundtrip -- --ignored --exact
+      - name: Benchmark compile smoke
+        if: matrix.case_id == 'build-linux-x86_64'
+        run: cargo build --locked --release --package sysopt --bin sysopt-bench
+      - name: Record qualification evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qualification-evidence
+          python tools/qualify_release.py record --case "${{ matrix.case_id }}" --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output "qualification-evidence/${{ matrix.case_id }}.json" --details "native build, clippy, tests and doctests passed on ${{ matrix.os }}"
+          if [[ "${{ matrix.case_id }}" == "build-linux-x86_64" ]]; then
+            python tools/qualify_release.py record --case tests-workspace --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/tests-workspace.json --details "workspace all-targets test suite passed"
+            python tools/qualify_release.py record --case doctests-workspace --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/doctests-workspace.json --details "workspace doctests passed"
+            python tools/qualify_release.py record --case clippy-deny-warnings --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/clippy-deny-warnings.json --details "Clippy passed with -D warnings"
+            python tools/qualify_release.py record --case deep-static-validation --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/deep-static-validation.json --details "deep validator and workflow contract checks passed"
+            python tools/qualify_release.py record --case pid-reuse-protection --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/pid-reuse-protection.json --details "three exact PID identity tests passed before evidence was recorded"
+            python tools/qualify_release.py record --case cgroup-membership-recovery --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/cgroup-membership-recovery.json --details "exact cgroup membership journal reconciliation test passed"
+            python tools/qualify_release.py record --case cgroup-controls-recovery --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/cgroup-controls-recovery.json --details "two exact cgroup control journal recovery tests passed"
+            python tools/qualify_release.py record --case installer-offline-timeout-fallback --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/installer-offline-timeout-fallback.json --details "positive and negative installer contract tests passed"
+          fi
+          if [[ "${{ matrix.case_id }}" == "build-windows-x86_64" ]]; then
+            python tools/qualify_release.py record --case ecoqos-roundtrip-x86_64 --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/ecoqos-roundtrip-x86_64.json --details "native Get/SetProcessInformation roundtrip restored original state"
+          elif [[ "${{ matrix.case_id }}" == "build-windows-arm64" ]]; then
+            python tools/qualify_release.py record --case ecoqos-roundtrip-arm64 --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/ecoqos-roundtrip-arm64.json --details "native Get/SetProcessInformation roundtrip restored original state"
+          elif [[ "${{ matrix.case_id }}" == "build-macos-arm64" ]]; then
+            python tools/qualify_release.py record --case macos-worker-qos-roundtrip --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/macos-worker-qos-roundtrip.json --details "macOS QoS and I/O policy guard tests passed"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qualification-${{ matrix.arch }}
+          path: qualification-evidence/**
+          if-no-files-found: error
+
+  security-audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - name: Install pinned cargo-audit
+        run: cargo install cargo-audit --locked --version 0.22.2
+      - name: Audit locked dependency graph
+        run: cargo audit -D warnings
+      - name: Record audit evidence
+        run: |
+          mkdir -p qualification-evidence
+          python tools/qualify_release.py record --case rustsec-audit --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/rustsec-audit.json --details "cargo-audit 0.22.2 passed against Cargo.lock"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qualification-security
+          path: qualification-evidence/**
+          if-no-files-found: error
+
+  benchmark-smoke:
+    needs: release-gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
+      - name: Run deterministic benchmark matrix
+        run: |
+          cargo run --locked --release --package sysopt --bin sysopt-bench -- --output benchmark.json
+          python tools/check_benchmarks.py benchmark.json
+      - name: Record benchmark evidence
+        run: |
+          mkdir -p qualification-evidence
+          for size in 100 500 2000; do
+            python tools/qualify_release.py record --case "benchmark-processes-$size" --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output "qualification-evidence/benchmark-processes-$size.json" --evidence benchmark.json --details "classification and SmartCache benchmark gate passed"
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qualification-benchmark
+          path: qualification-evidence/**
+          if-no-files-found: error
+
+
+  hardware-qualification:
+    if: ${{ !contains(github.ref_name, '-') }}
+    needs: release-gate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case_id: benchmark-sata-4gib
+            labels: [self-hosted, linux, x64, sysopt-qualification, storage-sata, ram-4gib]
+            kind: benchmark
+          - case_id: benchmark-sata-8gib
+            labels: [self-hosted, linux, x64, sysopt-qualification, storage-sata, ram-8gib]
+            kind: benchmark
+          - case_id: benchmark-nvme-16gib
+            labels: [self-hosted, linux, x64, sysopt-qualification, storage-nvme, ram-16gib]
+            kind: benchmark
+          - case_id: cgroup-v2-native-controls
+            labels: [self-hosted, linux, x64, sysopt-qualification, cgroup-v2]
+            kind: cgroup
+    runs-on: ${{ matrix.labels }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
+      - name: Run hardware qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qualification-evidence
+          if [[ "${{ matrix.kind }}" == benchmark ]]; then
+            [[ -n "${SYSOPT_BENCH_DATASET:-}" && -d "$SYSOPT_BENCH_DATASET" ]] || {
+              echo 'SYSOPT_BENCH_DATASET debe apuntar al dataset físico de calificación.' >&2; exit 2;
+            }
+            cargo run --locked --release --package sysopt --bin sysopt-bench -- --dataset "$SYSOPT_BENCH_DATASET" --output hardware-benchmark.json
+            python tools/check_benchmarks.py hardware-benchmark.json
+            evidence=hardware-benchmark.json
+            details='benchmark sobre almacenamiento y memoria físicos del runner pasó los presupuestos'
+          else
+            bash tools/native_cgroup_smoke.sh | tee native-cgroup-smoke.log
+            evidence=native-cgroup-smoke.log
+            details='membresía y controles cpu.weight/io.weight/memory.high verificados en cgroup v2 delegado real'
+          fi
+          python tools/qualify_release.py record --case "${{ matrix.case_id }}" --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output "qualification-evidence/${{ matrix.case_id }}.json" --evidence "$evidence" --details "$details"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qualification-hardware-${{ matrix.case_id }}
+          path: qualification-evidence/**
+          if-no-files-found: error
+
+  windows-packages:
+    needs: [release-gate, security-audit]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            arch: x86_64
+            installer: true
+            signature_case: authenticode-x86_64
+          - os: windows-11-arm
+            arch: arm64
+            installer: false
+            signature_case: authenticode-arm64
+    runs-on: ${{ matrix.os }}
+    env:
+      WINDOWS_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
+      - name: Validate PowerShell assets
+        shell: pwsh
+        run: |
+          $files = @('scripts/install.ps1','scripts/uninstall.ps1','packaging/windows/control-center.ps1','packaging/windows/task-helper.ps1')
+          foreach ($file in $files) {
+            $errors = $null
+            [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw $file), [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error "$file`: $_" }; exit 1 }
+          }
+      - name: Require signing secrets for stable tags
+        shell: pwsh
+        run: |
+          $stable = -not "${{ github.ref_name }}".Contains('-')
+          $available = -not [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PFX_BASE64) -and -not [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD) -and -not [string]::IsNullOrWhiteSpace($env:WINDOWS_TIMESTAMP_URL)
+          if ($stable -and -not $available) { throw 'Una release estable requiere certificado Authenticode y servidor RFC3161.' }
+          "WINDOWS_SIGNING_AVAILABLE=$($available.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Import Authenticode certificate
+        if: env.WINDOWS_SIGNING_AVAILABLE == 'true'
+        shell: pwsh
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP 'sysopt-signing.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_PFX_BASE64))
+          $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          if (-not $cert) { throw 'No se pudo importar el certificado Authenticode.' }
+          "WINDOWS_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Build native binaries
+        run: cargo build --locked --release --package sysopt
+      - name: Prepare and sign release assets
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          New-Item -ItemType Directory -Force release-assets, qualification-evidence | Out-Null
+          Copy-Item target/release/sysopt.exe "release-assets/sysopt-windows-${{ matrix.arch }}.exe"
+          Copy-Item packaging/windows/control-center.ps1 "release-assets/sysopt-control-windows-${{ matrix.arch }}.ps1"
+          Copy-Item scripts/uninstall.ps1 "release-assets/sysopt-uninstall-windows-${{ matrix.arch }}.ps1"
+          if ($env:WINDOWS_SIGNING_AVAILABLE -eq 'true') {
+            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse | Sort-Object FullName -Descending | Select-Object -First 1
+            if (-not $signtool) { throw 'signtool.exe no encontrado.' }
+            & $signtool.FullName sign /sha1 $env:WINDOWS_CERT_THUMBPRINT /fd SHA256 /td SHA256 /tr $env:WINDOWS_TIMESTAMP_URL "release-assets/sysopt-windows-${{ matrix.arch }}.exe"
+            if ($LASTEXITCODE -ne 0) { throw 'Firma Authenticode del binario falló.' }
+            $cert = Get-Item "Cert:\CurrentUser\My\$env:WINDOWS_CERT_THUMBPRINT"
+            Get-ChildItem release-assets -Filter *.ps1 | ForEach-Object {
+              $signature = Set-AuthenticodeSignature -FilePath $_.FullName -Certificate $cert -HashAlgorithm SHA256 -TimestampServer $env:WINDOWS_TIMESTAMP_URL
+              if ($signature.Status -ne 'Valid') { throw "Firma PowerShell inválida para $($_.Name): $($signature.Status)" }
+            }
+          }
+          if ('${{ matrix.installer }}' -eq 'true') {
+            New-Item -ItemType Directory -Force packaging/windows/build | Out-Null
+            Copy-Item "release-assets/sysopt-windows-${{ matrix.arch }}.exe" packaging/windows/build/sysopt.exe
+            $iscc = @("$env:ProgramFiles\Inno Setup 6\ISCC.exe", "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+            if (-not $iscc) { throw 'ISCC.exe no encontrado.' }
+            & $iscc "/DAppVersion=$version" "/DBuildDir=$((Resolve-Path packaging/windows/build).Path)" packaging/windows/sysopt.iss
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup falló.' }
+            Copy-Item packaging/windows/output/*.exe release-assets/
+            if ($env:WINDOWS_SIGNING_AVAILABLE -eq 'true') {
+              $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse | Sort-Object FullName -Descending | Select-Object -First 1
+              Get-ChildItem release-assets -Filter 'SysOpt-Setup*.exe' | ForEach-Object {
+                & $signtool.FullName sign /sha1 $env:WINDOWS_CERT_THUMBPRINT /fd SHA256 /td SHA256 /tr $env:WINDOWS_TIMESTAMP_URL $_.FullName
+                if ($LASTEXITCODE -ne 0) { throw "Firma del instalador falló: $($_.Name)" }
+              }
+            }
+          }
+          Get-ChildItem release-assets -File | ForEach-Object {
+            if ($env:WINDOWS_SIGNING_AVAILABLE -eq 'true' -and $_.Extension -eq '.exe') {
+              $signature = Get-AuthenticodeSignature $_.FullName
+              if ($signature.Status -ne 'Valid') { throw "Firma inválida: $($_.Name) $($signature.Status)" }
+            }
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)" | Set-Content -Encoding ascii "$($_.FullName).sha256"
+          }
+          & "release-assets/sysopt-windows-${{ matrix.arch }}.exe" --help | Out-Null
+          if ("${{ matrix.arch }}" -eq "x86_64") {
+            $setup = Get-ChildItem release-assets -Filter 'SysOpt-Setup*.exe' | Select-Object -First 1
+            if (-not $setup) { throw 'No se generó el instalador Inno Setup.' }
+            $smoke = Join-Path $env:RUNNER_TEMP 'SysOptInstallerSmoke'
+            Remove-Item -Recurse -Force $smoke -ErrorAction SilentlyContinue
+            & $setup.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART '/TASKS=' "/DIR=$smoke"
+            if ($LASTEXITCODE -ne 0) { throw 'La instalación silenciosa falló.' }
+            & (Join-Path $smoke 'sysopt.exe') --help | Out-Null
+            & $setup.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART '/TASKS=' "/DIR=$smoke"
+            if ($LASTEXITCODE -ne 0) { throw 'La actualización silenciosa falló.' }
+            $uninstaller = Get-ChildItem $smoke -Filter 'unins*.exe' | Select-Object -First 1
+            if (-not $uninstaller) { throw 'No se encontró el desinstalador.' }
+            & $uninstaller.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+            if ($LASTEXITCODE -ne 0) { throw 'La desinstalación silenciosa falló.' }
+            Start-Sleep -Seconds 1
+            if (Test-Path (Join-Path $smoke 'sysopt.exe')) { throw 'La desinstalación dejó el binario instalado.' }
+            python tools/qualify_release.py record --case installer-windows-install-update-uninstall --status pass --tag $env:GITHUB_REF_NAME --commit $env:GITHUB_SHA --output qualification-evidence/installer-windows-install-update-uninstall.json --details 'instalación, actualización y desinstalación silenciosas verificadas'
+          }
+          if ($env:WINDOWS_SIGNING_AVAILABLE -eq 'true') {
+            python tools/qualify_release.py record --case "${{ matrix.signature_case }}" --status pass --tag $env:GITHUB_REF_NAME --commit $env:GITHUB_SHA --output "qualification-evidence/${{ matrix.signature_case }}.json" --details 'Authenticode SHA-256 with RFC3161 timestamp verified'
+          }
+          python tools/write_asset_manifest.py --directory release-assets --platform "windows-${{ matrix.arch }}" --tag $env:GITHUB_REF_NAME --commit $env:GITHUB_SHA --output package-assets.json
+          python tools/qualify_release.py record --case "package-windows-${{ matrix.arch }}" --status pass --tag $env:GITHUB_REF_NAME --commit $env:GITHUB_SHA --output "qualification-evidence/package-windows-${{ matrix.arch }}.json" --evidence package-assets.json --details 'native Windows assets built, smoke-tested and hashed'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-windows-${{ matrix.arch }}
+          path: release-assets/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qualification-windows-package-${{ matrix.arch }}
+          path: qualification-evidence/**
+          if-no-files-found: error
+
+  linux-packages:
+    needs: [release-gate, security-audit]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x86_64
+            deb_arch: amd64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            deb_arch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
+      - name: Validate installer assets
+        run: |
+          bash -n scripts/install.sh scripts/uninstall.sh scripts/control.sh packaging/linux/sysopt-control
+          sh -n packaging/linux/postinst packaging/linux/prerm packaging/linux/postrm
+      - name: Build native binaries
+        run: cargo build --locked --release --package sysopt
+      - name: Build packages and smoke install
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"; ARCH="${{ matrix.arch }}"; DEB_ARCH="${{ matrix.deb_arch }}"
+          ROOT="dist/sysopt_${VERSION}_${DEB_ARCH}"
+          mkdir -p "$ROOT/DEBIAN" "$ROOT/usr/bin" "$ROOT/usr/lib/sysopt" "$ROOT/usr/lib/systemd/user" "$ROOT/usr/share/applications" "$ROOT/usr/share/sysopt" release-assets qualification-evidence
+          install -m 0755 target/release/sysopt "$ROOT/usr/bin/sysopt"
+          install -m 0755 target/release/sysopt-priority-helper "$ROOT/usr/lib/sysopt/sysopt-priority-helper"
+          install -m 0755 packaging/linux/sysopt-control "$ROOT/usr/bin/sysopt-control"
+          install -m 0644 packaging/linux/sysopt.service "$ROOT/usr/lib/systemd/user/sysopt.service"
+          install -m 0644 packaging/linux/sysopt-control.desktop "$ROOT/usr/share/applications/sysopt-control.desktop"
+          install -m 0644 packaging/linux/config.install.toml "$ROOT/usr/share/sysopt/config.install.toml"
+          install -m 0755 packaging/linux/postinst "$ROOT/DEBIAN/postinst"
+          install -m 0755 packaging/linux/prerm "$ROOT/DEBIAN/prerm"
+          install -m 0755 packaging/linux/postrm "$ROOT/DEBIAN/postrm"
+          cat > "$ROOT/DEBIAN/control" <<CONTROL
+          Package: sysopt
+          Version: $VERSION
+          Section: utils
+          Priority: optional
+          Architecture: $DEB_ARCH
+          Maintainer: SysOpt
+          Depends: systemd, libcap2-bin
+          Description: Automatic process optimizer and safe page-cache preloader
+          CONTROL
+          dpkg-deb --build --root-owner-group "$ROOT" "release-assets/SysOpt-${VERSION}-linux-${DEB_ARCH}.deb"
+          mkdir -p dist/portable
+          cp target/release/sysopt target/release/sysopt-priority-helper packaging/linux/sysopt-control packaging/linux/sysopt.service scripts/uninstall.sh README.md sysopt.example.toml dist/portable/
+          tar -C dist/portable -czf "release-assets/SysOpt-${VERSION}-linux-${ARCH}.tar.gz" .
+          cp target/release/sysopt "release-assets/sysopt-linux-${ARCH}"
+          cp target/release/sysopt-priority-helper "release-assets/sysopt-priority-helper-linux-${ARCH}"
+          install -m 0755 scripts/control.sh "release-assets/sysopt-control-linux-${ARCH}"
+          install -m 0755 scripts/uninstall.sh "release-assets/sysopt-uninstall-linux-${ARCH}"
+          "release-assets/sysopt-linux-${ARCH}" --help >/dev/null
+          (cd release-assets; for file in *; do sha256sum "$file" > "$file.sha256"; done)
+          if [[ "$ARCH" == x86_64 ]]; then
+            package="release-assets/SysOpt-${VERSION}-linux-${DEB_ARCH}.deb"
+            sudo dpkg -i "$package"
+            /usr/bin/sysopt --help >/dev/null
+            sudo dpkg -i "$package"
+            /usr/bin/sysopt --help >/dev/null
+            sudo dpkg -r sysopt
+            [[ ! -e /usr/bin/sysopt ]] || { echo 'la desinstalación DEB dejó /usr/bin/sysopt' >&2; exit 1; }
+            python tools/qualify_release.py record --case installer-linux-install-update-uninstall --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/installer-linux-install-update-uninstall.json --details 'instalación, actualización y desinstalación DEB verificadas'
+          fi
+          python tools/write_asset_manifest.py --directory release-assets --platform "linux-$ARCH" --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output package-assets.json
+          python tools/qualify_release.py record --case "package-linux-$ARCH" --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output "qualification-evidence/package-linux-$ARCH.json" --evidence package-assets.json --details 'native Linux assets built, smoke-tested and hashed'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-linux-${{ matrix.arch }}
+          path: release-assets/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qualification-linux-package-${{ matrix.arch }}
+          path: qualification-evidence/**
+          if-no-files-found: error
+
+  macos-packages:
+    needs: [release-gate, security-audit]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            arch: arm64
+            signature_case: developer-id-notarization-arm64
+          - os: macos-15-intel
+            arch: x86_64
+            signature_case: developer-id-notarization-x86_64
+    runs-on: ${{ matrix.os }}
+    env:
+      APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_APPLICATION_IDENTITY: ${{ secrets.APPLE_APPLICATION_IDENTITY }}
+      APPLE_INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
+      - name: Require signing secrets for stable tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          available=true
+          for name in APPLE_CERTIFICATE_P12_BASE64 APPLE_CERTIFICATE_PASSWORD APPLE_APPLICATION_IDENTITY APPLE_INSTALLER_IDENTITY APPLE_ID APPLE_APP_PASSWORD APPLE_TEAM_ID; do
+            [[ -n "${!name:-}" ]] || available=false
+          done
+          if [[ "$GITHUB_REF_NAME" != *-* && "$available" != true ]]; then
+            echo 'Una release estable requiere Developer ID y credenciales de notarización.' >&2; exit 1
+          fi
+          echo "MACOS_SIGNING_AVAILABLE=$available" >> "$GITHUB_ENV"
+      - name: Import Developer ID certificate
+        if: env.MACOS_SIGNING_AVAILABLE == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/sysopt-signing.keychain-db"
+          PASSWORD="$(openssl rand -hex 24)"
+          echo "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/sysopt-signing.p12"
+          security create-keychain -p "$PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/sysopt-signing.p12" -k "$KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productsign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+      - name: Validate macOS assets
+        run: |
+          bash -n scripts/install.sh scripts/uninstall.sh scripts/control.sh packaging/macos/scripts/preinstall packaging/macos/scripts/postinstall packaging/macos/control-app/Contents/MacOS/sysopt-control
+          plutil -lint packaging/macos/io.sysopt.agent.plist packaging/macos/control-app/Contents/Info.plist
+      - name: Build native binaries
+        run: cargo build --locked --release --package sysopt
+      - name: Build, sign and notarize packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"; BASE_VERSION="${VERSION%%-*}"; ARCH="${{ matrix.arch }}"
+          PKG_VERSION="$BASE_VERSION"; [[ "$VERSION" =~ -rc([0-9]+)$ ]] && PKG_VERSION="${BASE_VERSION}.${BASH_REMATCH[1]}"
+          ROOT="dist/pkgroot"
+          mkdir -p "$ROOT/usr/local/bin" "$ROOT/Library/LaunchAgents" "$ROOT/Applications" "$ROOT/Library/Application Support/SysOpt" release-assets qualification-evidence
+          install -m 0755 target/release/sysopt "$ROOT/usr/local/bin/sysopt"
+          install -m 0644 packaging/macos/io.sysopt.agent.plist "$ROOT/Library/LaunchAgents/io.sysopt.agent.plist"
+          install -m 0644 packaging/macos/config.install.toml "$ROOT/Library/Application Support/SysOpt/config.install.toml"
+          cp -R packaging/macos/control-app "$ROOT/Applications/SysOpt Control.app"
+          chmod 0755 "$ROOT/Applications/SysOpt Control.app/Contents/MacOS/sysopt-control"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $PKG_VERSION" "$ROOT/Applications/SysOpt Control.app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $BASE_VERSION" "$ROOT/Applications/SysOpt Control.app/Contents/Info.plist"
+          if [[ "$MACOS_SIGNING_AVAILABLE" == true ]]; then
+            codesign --force --options runtime --timestamp --sign "$APPLE_APPLICATION_IDENTITY" "$ROOT/usr/local/bin/sysopt"
+            codesign --force --options runtime --timestamp --deep --sign "$APPLE_APPLICATION_IDENTITY" "$ROOT/Applications/SysOpt Control.app"
+            codesign --verify --deep --strict --verbose=2 "$ROOT/Applications/SysOpt Control.app"
+            pkgbuild --root "$ROOT" --scripts packaging/macos/scripts --identifier io.sysopt.pkg --version "$PKG_VERSION" --sign "$APPLE_INSTALLER_IDENTITY" "release-assets/SysOpt-${VERSION}-macos-${ARCH}.pkg"
+            xcrun notarytool submit "release-assets/SysOpt-${VERSION}-macos-${ARCH}.pkg" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+            xcrun stapler staple "release-assets/SysOpt-${VERSION}-macos-${ARCH}.pkg"
+            xcrun stapler validate "release-assets/SysOpt-${VERSION}-macos-${ARCH}.pkg"
+            pkgutil --check-signature "release-assets/SysOpt-${VERSION}-macos-${ARCH}.pkg"
+          else
+            pkgbuild --root "$ROOT" --scripts packaging/macos/scripts --identifier io.sysopt.pkg --version "$PKG_VERSION" "release-assets/SysOpt-${VERSION}-macos-${ARCH}.pkg"
+          fi
+          cp "$ROOT/usr/local/bin/sysopt" "release-assets/sysopt-macos-${ARCH}"
+          install -m 0755 scripts/control.sh "release-assets/sysopt-control-macos-${ARCH}"
+          install -m 0755 scripts/uninstall.sh "release-assets/sysopt-uninstall-macos-${ARCH}"
+          tar -czf "release-assets/SysOpt-${VERSION}-macos-${ARCH}.tar.gz" -C release-assets "sysopt-macos-${ARCH}"
+          "release-assets/sysopt-macos-${ARCH}" --help >/dev/null
+          (cd release-assets; for file in *; do shasum -a 256 "$file" > "$file.sha256"; done)
+          if [[ "${{ matrix.arch }}" == "arm64" ]]; then
+            package="release-assets/SysOpt-${VERSION}-macos-${ARCH}.pkg"
+            sudo installer -pkg "$package" -target /
+            /usr/local/bin/sysopt --help >/dev/null
+            sudo installer -pkg "$package" -target /
+            /usr/local/bin/sysopt --help >/dev/null
+            sudo bash "release-assets/sysopt-uninstall-macos-${ARCH}" --remove-data
+            [[ ! -e /usr/local/bin/sysopt ]] || { echo 'la desinstalación PKG dejó /usr/local/bin/sysopt' >&2; exit 1; }
+            python tools/qualify_release.py record --case installer-macos-install-update-uninstall --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/installer-macos-install-update-uninstall.json --details 'instalación, actualización y desinstalación PKG verificadas'
+          fi
+          if [[ "$MACOS_SIGNING_AVAILABLE" == true ]]; then
+            python tools/qualify_release.py record --case "${{ matrix.signature_case }}" --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output "qualification-evidence/${{ matrix.signature_case }}.json" --details 'Developer ID signature, notarytool and stapler validation passed'
+          fi
+          python tools/write_asset_manifest.py --directory release-assets --platform "macos-$ARCH" --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output package-assets.json
+          python tools/qualify_release.py record --case "package-macos-$ARCH" --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output "qualification-evidence/package-macos-$ARCH.json" --evidence package-assets.json --details 'native macOS assets built, smoke-tested and hashed'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-macos-${{ matrix.arch }}
+          path: release-assets/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qualification-macos-package-${{ matrix.arch }}
+          path: qualification-evidence/**
+          if-no-files-found: error
+
+  publish-release:
+    needs: [release-gate, security-audit, benchmark-smoke, hardware-qualification, windows-packages, linux-packages, macos-packages]
+    if: >-
+      ${{ always()
+          && needs.release-gate.result == 'success'
+          && needs.security-audit.result == 'success'
+          && needs.benchmark-smoke.result == 'success'
+          && needs.windows-packages.result == 'success'
+          && needs.linux-packages.result == 'success'
+          && needs.macos-packages.result == 'success'
+          && ((contains(github.ref_name, '-') && needs.hardware-qualification.result == 'skipped')
+              || (contains(github.ref_name, '-') == false && needs.hardware-qualification.result == 'success')) }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: qualification-*
+          path: qualification-evidence
+          merge-multiple: true
+      - name: Verify native package manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/verify_package_manifests.py --assets-dir release-assets --evidence-dir qualification-evidence --matrix "$QUALIFICATION_MATRIX" --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output package-manifest-verification.json
+          python tools/qualify_release.py record --case package-manifest-integrity --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/package-manifest-integrity.json --evidence package-manifest-verification.json --details 'all native package assets matched their per-runner manifests without collisions or omissions'
+      - name: Prepare installers, SBOM and checksums
+        env:
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          repo = os.environ['RELEASE_REPOSITORY']
+          unix = Path('scripts/install.sh').read_text(encoding='utf-8').replace('DEFAULT_REPO=""', f'DEFAULT_REPO="{repo}"', 1)
+          windows = Path('scripts/install.ps1').read_text(encoding='utf-8').replace('else { "" }', f'else {{ "{repo}" }}', 1)
+          Path('release-assets/sysopt-install-unix.sh').write_text(unix, encoding='utf-8')
+          Path('release-assets/sysopt-install-windows.ps1').write_text(windows, encoding='utf-8')
+          PY
+          chmod 0755 release-assets/sysopt-install-unix.sh
+          bash -n release-assets/sysopt-install-unix.sh
+          VERSION="${GITHUB_REF_NAME#v}"
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"
+          python tools/generate_cyclonedx.py --lock Cargo.lock --version "$VERSION" --output release-assets/sysopt.cdx.json
+          python tools/build_source_archive.py --root . --manifest RELEASE-MANIFEST.sha256 --prefix "SysOpt-${VERSION}-source" --source-date-epoch "$SOURCE_DATE_EPOCH" --output "release-assets/SysOpt-${VERSION}-source.tar.gz"
+          gh attestation trusted-root > release-assets/trusted_root.jsonl
+          # Regenerate every per-file sidecar after artifact merging so stale or
+          # overwritten package checksums cannot escape into the release.
+          while IFS= read -r -d '' file; do
+            sha256sum "$file" > "$file.sha256"
+          done < <(find release-assets -maxdepth 1 -type f ! -name '*.sha256' ! -name 'ARTIFACTS.sha256' ! -name 'SHA256SUMS.txt' -print0 | sort -z)
+          (
+            cd release-assets
+            while IFS= read -r -d '' file; do
+              sha256sum "$file"
+            done < <(find . -maxdepth 1 -type f ! -name '*.sha256' ! -name 'ARTIFACTS.sha256' ! -name 'SHA256SUMS.txt' -printf '%f\0' | sort -z) > ARTIFACTS.sha256
+            sha256sum -c ARTIFACTS.sha256
+          )
+          python tools/qualify_release.py record --case cyclonedx-sbom --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/cyclonedx-sbom.json --evidence release-assets/sysopt.cdx.json --details 'deterministic CycloneDX 1.6 SBOM generated from Cargo.lock'
+      - name: Attest build provenance
+        id: provenance
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-checksums: release-assets/ARTIFACTS.sha256
+      - name: Attest SBOM
+        id: sbom-attestation
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-checksums: release-assets/ARTIFACTS.sha256
+          sbom-path: release-assets/sysopt.cdx.json
+      - name: Store attestation bundles and qualification evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "${{ steps.provenance.outputs.bundle-path }}" release-assets/sysopt-provenance.sigstore.json
+          cp "${{ steps.sbom-attestation.outputs.bundle-path }}" release-assets/sysopt-sbom.sigstore.json
+          python tools/qualify_release.py record --case github-build-provenance --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/github-build-provenance.json --evidence release-assets/sysopt-provenance.sigstore.json --details 'GitHub OIDC/Sigstore build provenance attestation created'
+          channel=prerelease; [[ "$GITHUB_REF_NAME" != *-* ]] && channel=stable
+          python tools/qualify_release.py validate --matrix "$QUALIFICATION_MATRIX" --evidence-dir qualification-evidence --channel "$channel" --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --report release-assets/qualification-report.json
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$GITHUB_SHA")"
+          python tools/build_qualification_bundle.py --evidence-dir qualification-evidence --matrix "$QUALIFICATION_MATRIX" --report release-assets/qualification-report.json --source-date-epoch "$SOURCE_DATE_EPOCH" --output release-assets/qualification-evidence.tar.gz
+          (
+            cd release-assets
+            while IFS= read -r -d '' file; do
+              sha256sum "$file"
+            done < <(find . -maxdepth 1 -type f ! -name 'SHA256SUMS.txt' -printf '%f\0' | sort -z) > SHA256SUMS.txt
+            sha256sum -c SHA256SUMS.txt
+          )
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          files: release-assets/*
+          fail_on_unmatched_files: true
+          prerelease: ${{ contains(github.ref_name, '-') }}

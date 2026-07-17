@@ -1,0 +1,42 @@
+[package]
+name = "sysopt"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[[bin]]
+name = "sysopt"
+path = "src/main.rs"
+
+[[bin]]
+name = "sysopt-priority-helper"
+path = "src/bin/sysopt-priority-helper.rs"
+
+[[bin]]
+name = "sysopt-bench"
+path = "src/bin/sysopt-bench.rs"
+
+[dependencies]
+telemetry = { path = "../telemetry" }
+policy = { path = "../policy" }
+enforcement = { path = "../enforcement" }
+smart-cache = { path = "../smart-cache" }
+intelligence = { path = "../intelligence" }
+anyhow = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+ctrlc = { workspace = true }
+serde_json = { workspace = true }
+fs2 = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+signal-hook = { version = "0.3", features = ["iterator"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+] }
