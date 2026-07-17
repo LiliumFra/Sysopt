@@ -119,7 +119,7 @@ jobs:
           elif [[ "${{ matrix.case_id }}" == "build-macos-arm64" ]]; then
             python tools/qualify_release.py record --case macos-worker-qos-roundtrip --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/macos-worker-qos-roundtrip.json --details "macOS QoS and I/O policy guard tests passed"
           fi
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qualification-${{ matrix.arch }}
           path: qualification-evidence/**
@@ -143,7 +143,7 @@ jobs:
         run: |
           mkdir -p qualification-evidence
           python tools/qualify_release.py record --case rustsec-audit --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output qualification-evidence/rustsec-audit.json --details "cargo-audit 0.22.2 passed against Cargo.lock"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qualification-security
           path: qualification-evidence/**
@@ -171,7 +171,7 @@ jobs:
           for size in 100 500 2000; do
             python tools/qualify_release.py record --case "benchmark-processes-$size" --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output "qualification-evidence/benchmark-processes-$size.json" --evidence benchmark.json --details "classification and SmartCache benchmark gate passed"
           done
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qualification-benchmark
           path: qualification-evidence/**
@@ -226,7 +226,7 @@ jobs:
             details='membresía y controles cpu.weight/io.weight/memory.high verificados en cgroup v2 delegado real'
           fi
           python tools/qualify_release.py record --case "${{ matrix.case_id }}" --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output "qualification-evidence/${{ matrix.case_id }}.json" --evidence "$evidence" --details "$details"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qualification-hardware-${{ matrix.case_id }}
           path: qualification-evidence/**
@@ -355,12 +355,12 @@ jobs:
           }
           python tools/write_asset_manifest.py --directory release-assets --platform "windows-${{ matrix.arch }}" --tag $env:GITHUB_REF_NAME --commit $env:GITHUB_SHA --output package-assets.json
           python tools/qualify_release.py record --case "package-windows-${{ matrix.arch }}" --status pass --tag $env:GITHUB_REF_NAME --commit $env:GITHUB_SHA --output "qualification-evidence/package-windows-${{ matrix.arch }}.json" --evidence package-assets.json --details 'native Windows assets built, smoke-tested and hashed'
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-windows-${{ matrix.arch }}
           path: release-assets/*
           if-no-files-found: error
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qualification-windows-package-${{ matrix.arch }}
           path: qualification-evidence/**
@@ -442,12 +442,12 @@ jobs:
           fi
           python tools/write_asset_manifest.py --directory release-assets --platform "linux-$ARCH" --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output package-assets.json
           python tools/qualify_release.py record --case "package-linux-$ARCH" --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output "qualification-evidence/package-linux-$ARCH.json" --evidence package-assets.json --details 'native Linux assets built, smoke-tested and hashed'
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-linux-${{ matrix.arch }}
           path: release-assets/*
           if-no-files-found: error
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qualification-linux-package-${{ matrix.arch }}
           path: qualification-evidence/**
@@ -563,12 +563,12 @@ jobs:
           fi
           python tools/write_asset_manifest.py --directory release-assets --platform "macos-$ARCH" --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output package-assets.json
           python tools/qualify_release.py record --case "package-macos-$ARCH" --status pass --tag "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --output "qualification-evidence/package-macos-$ARCH.json" --evidence package-assets.json --details 'native macOS assets built, smoke-tested and hashed'
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-macos-${{ matrix.arch }}
           path: release-assets/*
           if-no-files-found: error
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qualification-macos-package-${{ matrix.arch }}
           path: qualification-evidence/**
