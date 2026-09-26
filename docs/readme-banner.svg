@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-labelledby="title desc">
+  <title id="title">SysOpt</title>
+  <desc id="desc">Reversible and verifiable system optimization</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07121A"/>
+      <stop offset=".56" stop-color="#0B1720"/>
+      <stop offset="1" stop-color="#0E1A17"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5EC8FF"/>
+      <stop offset="1" stop-color="#65E6A7"/>
+    </linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="36"/></filter>
+  </defs>
+  <rect width="1280" height="360" rx="28" fill="url(#bg)"/>
+  <circle cx="1100" cy="40" r="175" fill="#5EC8FF" opacity=".08" filter="url(#glow)"/>
+  <circle cx="1130" cy="300" r="175" fill="#65E6A7" opacity=".08" filter="url(#glow)"/>
+  <rect x="78" y="82" width="70" height="70" rx="18" fill="none" stroke="url(#accent)" stroke-width="4"/>
+  <path d="M96 117h34M113 100v34" stroke="#65E6A7" stroke-width="5" stroke-linecap="round"/>
+  <text x="178" y="132" fill="#F3F7F9" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="60" font-weight="750">SysOpt</text>
+  <text x="78" y="209" fill="#AAB9C2" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="28">Reversible · verifiable · cross-platform system optimization</text>
+  <rect x="78" y="248" width="770" height="3" rx="1.5" fill="url(#accent)" opacity=".9"/>
+  <text x="78" y="302" fill="#81919A" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="21">Windows · Linux · macOS · Rust · conservative rollback</text>
+</svg>
