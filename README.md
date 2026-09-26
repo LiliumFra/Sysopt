@@ -1,3 +1,13 @@
+<div align="center">
+
+<img src="./docs/readme-banner.svg" alt="SysOpt — reversible and verifiable system optimization" width="100%" />
+
+**Windows · Linux · macOS · Rust**
+
+[Capabilities](#capacidades-principales) · [Install](#instalación) · [Safety model](#recuperación-y-propiedad-de-cambios) · [Release integrity](#release-y-cadena-de-suministro) · [Limitations](#límites-deliberados)
+
+</div>
+
 # SysOpt 0.7.0-rc1 — optimización automática, reversible y verificable
 
 > **Estado:** candidato de release `0.7.0-rc1`. El código y la automatización del roadmap están integrados. Una publicación estable queda bloqueada hasta que GitHub Actions complete builds, tests, Clippy, RustSec, instalación real, benchmarks de hardware, firma Authenticode, firma/notarización de macOS, SBOM y attestations.
